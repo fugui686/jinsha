@@ -1,0 +1,244 @@
+import sys
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QPushButton, QMessageBox
+from configparser import ConfigParser
+import requests
+from datetime import datetime
+from openpyxl import Workbook
+import os
+
+
+class DataFetchThread(QThread):
+    # 创建信号用于向主线程返回数据
+    finished = pyqtSignal(str)
+
+    def __init__(self, port, token, ys):
+        super().__init__()
+        self.port = port
+        self.token = token
+        self.ys = ys
+
+    def run(self):
+        try:
+            url = f'https://{self.port}/almond/api/vip/statistics/list'
+            headers = {
+                'accept': 'application/json, text/plain, */*',
+                'cookie': self.token,
+            }
+            params = {
+                "vipId[]": [
+                    3584, 3585, 5282, 5466, 5467, 5468, 5469, 5470, 5471, 5472,
+                    5739, 5740, 5741, 5742, 5743, 5744, 5745, 5746, 5747, 5748,
+                    5749, 5750, 5751, 5752, 5753, 5754, 5755, 5756, 5757, 5758,
+                    7573, 7574, 7575, 7576, 7577, 7578
+                ],
+                "period": "current",
+                "category": 205,
+                "pageCount": 200
+            }
+
+            # 将 total_pages 转换为整数
+            total_pages = int(self.ys)
+
+            # 创建 Excel 文件
+            wb = Workbook()
+            ws = wb.active
+            ws.append(['会员账号', '会员等级'])
+
+            # 循环获取每一页的数据
+            for page in range(1, total_pages + 1):
+                params['page'] = page  # 在每次循环时更新当前页数
+                response = requests.get(url=url, headers=headers, params=params, verify=False)
+                if response.status_code == 200:
+                    data = response.json().get('data').get('memberList')
+
+                    # 遍历每一条数据
+                    for aa in data:
+                        会员账号 = aa.get('username')
+                        会员等级 = aa.get('vipName')
+                        ws.append([会员账号, 会员等级])
+
+            dqrq = datetime.now()
+            rq = dqrq.strftime('%Y%m%d%H%M%S')
+
+            # 保存 Excel 文件
+            file_name = f'棋牌荣耀账号{rq}.xlsx'
+            wb.save(file_name)
+            os.startfile(file_name)
+
+            # 发出信号表示完成
+            self.finished.emit(f'获取数据完成！')
+
+        except Exception as e:
+            # 发出信号并返回错误信息
+            self.finished.emit(f'发生错误: {str(e)}')
+
+
+class DataFetchThreadd(QThread):
+    # 创建信号用于向主线程返回数据
+    finished = pyqtSignal(str)
+
+    def __init__(self, port, token, ys):
+        super().__init__()
+        self.port = port
+        self.token = token
+        self.ys = ys
+
+    def run(self):
+        try:
+            url = f'https://{self.port}/almond/api/vip/statistics/list'
+            headers = {
+                'accept': 'application/json, text/plain, */*',
+                'cookie': self.token,
+            }
+            params = {
+                "vipId[]": [
+                    6452, 6453, 6454, 6455, 6456, 6457, 6458, 6459, 6460, 6461,
+                    7176, 7177, 7178, 7179, 7180, 7181, 7182, 7183, 7184, 7185,
+                    7186, 7187, 7188, 7189, 7190, 7191, 7192, 7193, 7194, 7195,
+                    7579, 7580, 7581, 7582, 7583, 7584
+                ],
+                "period": "current",
+                "category": 356,
+                "pageCount": 200  # 不再设置 'page'，它将在循环中动态更新
+            }
+
+            # 将 total_pages 转换为整数
+            total_pages = int(self.ys)
+
+            # 创建 Excel 文件
+            wb = Workbook()
+            ws = wb.active
+            ws.append(['会员账号', '会员等级'])
+
+            # 循环获取每一页的数据
+            for page in range(1, total_pages + 1):
+                params['page'] = page  # 在每次循环时更新当前页数
+                response = requests.get(url=url, headers=headers, params=params, verify=False)
+                if response.status_code == 200:
+                    data = response.json().get('data').get('memberList')
+
+                    # 遍历每一条数据
+                    for aa in data:
+                        会员账号 = aa.get('username')
+                        会员等级 = aa.get('vipName')
+                        ws.append([会员账号, 会员等级])
+
+            dqrq = datetime.now()
+            rq = dqrq.strftime('%Y%m%d%H%M%S')
+
+            # 保存 Excel 文件
+            file_name = f'彩票荣耀账号{rq}.xlsx'
+            wb.save(file_name)
+            os.startfile(file_name)
+
+            # 发出信号表示完成
+            self.finished.emit(f'获取数据完成！')
+
+        except Exception as e:
+            # 发出信号并返回错误信息
+            self.finished.emit(f'发生错误: {str(e)}')
+
+
+class LoginWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):  # 初始化界面
+        self.setWindowTitle('金沙棋牌荣耀/彩票荣耀')
+        self.setGeometry(200, 200, 300, 400)
+
+        # 创建账号输入框
+        self.account_input = QLineEdit(self)
+        self.account_input.setPlaceholderText('后台域名')
+        self.account_input.setGeometry(50, 20, 200, 30)
+
+        # 创建密码输入框
+        self.entry_token = QLineEdit(self)
+        self.entry_token.setPlaceholderText('Cookie')
+        self.entry_token.setGeometry(50, 80, 200, 30)
+
+        # 创建页数输入框
+        self.entry_ys = QLineEdit(self)
+        self.entry_ys.setPlaceholderText('页数')
+        self.entry_ys.setGeometry(50, 140, 200, 30)
+
+        # 创建手动保存按钮
+        self.save_button = QPushButton("保存配置", self)
+        self.save_button.setGeometry(100, 200, 100, 30)
+        self.save_button.clicked.connect(self.manual_save)
+
+        # 创建获取数据按钮
+        self.submit_button = QPushButton('获取棋牌荣耀数据', self)
+        self.submit_button.setGeometry(80, 260, 130, 30)
+        self.submit_button.clicked.connect(self.start_data_fetch)
+
+        # 创建获取数据按钮
+        self.submit_buttonn = QPushButton('获取彩票荣耀数据', self)
+        self.submit_buttonn.setGeometry(80, 320, 130, 30)
+        self.submit_buttonn.clicked.connect(self.start_data_fetchh)
+
+        self.load_config()
+
+    def save_config(self, port, token):  # 保存配置到文件
+        config = ConfigParser()
+        config['USER'] = {'Port': port, 'Token': token}
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
+
+    def load_config(self):  # 从文件加载配置
+        config = ConfigParser()
+        config.read('config.ini')
+        if 'USER' in config:
+            self.account_input.setText(config['USER']['Port'])
+            self.entry_token.setText(config['USER']['Token'])
+
+    def start_data_fetch(self):  # 启动后台线程获取数据
+        port = self.account_input.text()
+        token = self.entry_token.text()
+        ys = self.entry_ys.text()
+
+        if not port or not token or not ys:
+            QMessageBox.warning(self, "输入错误", "请确保所有输入框都已填写！")
+            return
+
+        # 创建并启动线程
+        self.thread = DataFetchThread(port, token, ys)
+        self.thread.finished.connect(self.on_data_fetch_finished)  # 连接信号
+        self.thread.start()
+
+    def start_data_fetchh(self):  # 启动后台线程获取数据
+        port = self.account_input.text()
+        token = self.entry_token.text()
+        ys = self.entry_ys.text()
+
+        if not port or not token or not ys:
+            QMessageBox.warning(self, "输入错误", "请确保所有输入框都已填写！")
+            return
+
+        # 创建并启动线程
+        self.thread = DataFetchThreadd(port, token, ys)
+        self.thread.finished.connect(self.on_data_fetch_finished)  # 连接信号
+        self.thread.start()
+
+    def on_data_fetch_finished(self, message):  # 处理线程完成信号
+        QMessageBox.information(self, "提示", message)
+
+    def manual_save(self):  # 手动保存配置
+        port = self.account_input.text()
+        token = self.entry_token.text()
+
+        if not (port and token):
+            QMessageBox.warning(self, "输入错误", "请填写所有字段！")
+            return
+
+        self.save_config(port, token)
+        QMessageBox.information(self, "提示", "配置已保存！")
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    login_window = LoginWindow()
+    login_window.show()
+    sys.exit(app.exec_())
