@@ -1,0 +1,151 @@
+import pandas as pd
+import pytz
+import requests
+from openpyxl import Workbook
+import openpyxl
+import os
+
+from openpyxl.reader.excel import load_workbook
+from urllib3.exceptions import InsecureRequestWarning
+from datetime import datetime, timedelta
+from lxml import html
+import configparser
+
+
+def read_cookies():
+    config = configparser.ConfigParser()
+    config.read('cookies.ini', encoding='utf-8')  # 指定编码为utf-8
+    cookies = config.get('cookies', 'cookies')  # 获取cookies的值
+    return cookies
+
+
+def update_cookies(new_cookies):
+    config = configparser.ConfigParser()
+    config.read('cookies.ini')
+    config['cookies'] = {'cookies': new_cookies}  # 修改为字典类型
+    with open('cookies.ini', 'w', encoding='utf-8') as config_file:  # 指定编码为utf-8
+        config.write(config_file)
+
+
+def start():
+    # 读取cookie信息
+    cookies = read_cookies()
+    # 禁用 SSL 证书验证警告
+    requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+
+    # 设置美东时区
+    eastern = pytz.timezone('US/Eastern')
+
+    # 获取当前时间
+    current_time = datetime.now(eastern)
+
+    # 计算昨天的日期
+    yesterday = current_time - timedelta(days=1)
+
+    # 设置昨天的开始时间为0点0分0秒
+    yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 设置昨天的结束时间为23点59分59秒
+    yesterday_end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # 格式化输出
+    开始时间 = yesterday_start.strftime("%Y-%m-%d %H:%M:%S")
+    结束时间 = yesterday_end.strftime("%Y-%m-%d %H:%M:%S")
+    print(开始时间)
+    print(结束时间)
+
+    # 报表数据获取
+    url = "https://cr168.mne-xoek35.com/report/charts/game_detail"
+    params = {
+        "searchtype": "yesterday"
+    }
+
+    # 设置请求头
+    headers = {
+        "Referer": "https://cr168.mne-xoek35.com/report/charts/charts",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    data = response.json()
+
+    # 获取 chartdata 中每个选项的数据
+    chartdata = data["data"]["chartdata"]
+
+    # 定义 Excel 文件路径
+    excel_path = "金沙游戏每日数据.xlsx"
+
+    # 尝试加载工作簿
+    try:
+        wb = openpyxl.load_workbook(excel_path)
+        print(f"成功加载工作簿 {excel_path}")
+    except FileNotFoundError:
+        print(f"文件 {excel_path} 未找到。")
+        exit(1)
+    except openpyxl.utils.exceptions.InvalidFileException:
+        print(f"文件 {excel_path} 格式无效或已损坏。")
+        exit(1)
+
+    # 选择要操作的表格
+    try:
+        ws = wb.active  # 获取活动工作表
+        print(f"成功选择活动工作表 {ws.title}")
+    except KeyError:
+        print(f"未找到活动工作表。")
+        exit(1)
+
+    # 定义写入位置的范围
+    ranges = {
+        "视讯": (5, 15, 2, 3, 5, 4),  # 对调 BetAmountFormat (5) 和 Payoff (4)
+        "电子": (16, 47, 2, 3, 5, 4),  # 对调 BetAmountFormat (5) 和 Payoff (4)
+        "体育": (5, 13, 9, 10, 12, 11),  # 对调 BetAmountFormat (12) 和 Payoff (11)
+        "彩票": (14, 18, 9, 10, 12, 11),  # 对调 BetAmountFormat (12) 和 Payoff (11)
+        "棋牌": (19, 30, 9, 10, 12, 11)  # 对调 BetAmountFormat (12) 和 Payoff (11)
+    }
+
+    # 初始化计数器
+    counters = {
+        "视讯": ranges["视讯"][0],
+        "电子": ranges["电子"][0],
+        "体育": ranges["体育"][0],
+        "彩票": ranges["彩票"][0],
+        "棋牌": ranges["棋牌"][0]
+    }
+
+    # 遍历 chartdata 中每个选项，并将符合条件的数据写入表格的指定位置
+    for option in chartdata:
+        game_key_value = option["GameKey"]
+        wagers_total_value = int(option["WagersTotal"].replace(",", ""))  # 去除逗号并转换为整数
+        payoff_value = float(option["Payoff"].replace(",", ""))  # 去除逗号并转换为浮点数
+        bet_amount_format_value = float(option["BetAmountFormat"].replace(",", ""))  # 去除逗号并转换为浮点数
+        for key in ranges:
+            if key in game_key_value:
+                if counters[key] > ranges[key][1]:
+                    break  # 超出指定行数则停止写入
+
+                ws.cell(row=counters[key], column=ranges[key][2], value=game_key_value)
+                ws.cell(row=counters[key], column=ranges[key][3] + 1, value=wagers_total_value)  # 写入 WagersTotal
+                ws.cell(row=counters[key], column=ranges[key][4] + 1, value=payoff_value)  # 写入 Payoff
+                ws.cell(row=counters[key], column=ranges[key][5] + 1,
+                        value=bet_amount_format_value)  # 写入 BetAmountFormat
+
+                # 移动到下一行
+                counters[key] += 1
+
+    # 保存工作簿
+    try:
+        wb.save(excel_path)
+        print(f"成功保存工作簿 {excel_path}")
+    except PermissionError:
+        print(f"无法保存文件 {excel_path}。请检查文件是否被其他程序打开。")
+        exit(1)
+
+    # 自动打开生成的 Excel 文件
+    os.startfile(excel_path)
+
+
+if __name__ == '__main__':
+    start()
+
