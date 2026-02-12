@@ -1,0 +1,1265 @@
+import os
+import pytz
+import requests
+import json
+
+from openpyxl.reader.excel import load_workbook
+from urllib3.exceptions import InsecureRequestWarning
+from datetime import datetime, timedelta
+from lxml import html
+import configparser
+
+
+def read_cookies():
+    config = configparser.ConfigParser()
+    config.read('cookies.ini', encoding='utf-8')  # 指定编码为utf-8
+    cookies = config.get('cookies', 'cookies')  # 获取cookies的值
+    return cookies
+
+def update_cookies(new_cookies):
+    config = configparser.ConfigParser()
+    config.read('cookies.ini')
+    config['cookies'] = {'cookies': new_cookies}  # 修改为字典类型
+    with open('cookies.ini', 'w', encoding='utf-8') as config_file:  # 指定编码为utf-8
+        config.write(config_file)
+
+def start():
+    # 读取cookie信息
+    cookies = read_cookies()
+    # 禁用 SSL 证书验证警告
+    requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+
+    # 设置美东时区
+    eastern = pytz.timezone('US/Eastern')
+
+    # 获取当前时间
+    current_time = datetime.now(eastern)
+
+    # 计算昨天的日期
+    yesterday = current_time - timedelta(days=1)
+
+    # 设置昨天的开始时间为0点0分0秒
+    yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 设置昨天的结束时间为23点59分59秒
+    yesterday_end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # 格式化输出
+    开始时间 = yesterday_start.strftime("%Y-%m-%d %H:%M:%S")
+    结束时间 = yesterday_end.strftime("%Y-%m-%d %H:%M:%S")
+    print(开始时间)
+    print(结束时间)
+
+    url = "https://cr168.mne-xoek35.com/agv3/cl/index.php"
+    params = {
+        "module": "GeneralLedger3",
+        "method": "ledgerL1",
+        "currency": "RMB",
+        "startTime": 开始时间,
+        "endTime": 结束时间
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/cl/index.php?module=GeneralLedger3&method=ledgerL1",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+
+    银行卡充值人数 = float(response_json['data']['company']['totalUser'])
+    银行卡充值笔数 = float(response_json['data']['company']['totalCount'])
+
+    # 打印company中amount和totalUser和totalCount的值
+    # print(银行卡充值人数)
+    # print(银行卡充值笔数)
+
+    给予反水人数 = float(response_json['data']['rebate']['totalUser'])
+    给予反水笔数 = float(response_json['data']['rebate']['totalCount'])
+    # print(给予反水人数)
+    # print(给予反水笔数)
+
+    # 给予反水
+    给予反水金额= float(response_json['data'].get('rebate', {}).get('amount', 0))
+    # print(给予反水金额)
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+
+    if 'data' in response_json and 'cryptoDeposit' in response_json['data']:
+        数字货币充值人数 = float(response_json['data']['cryptoDeposit']['totalUser'])
+        数字货币充值笔数 = float(response_json['data']['cryptoDeposit']['totalCount'])
+    else:
+        数字货币充值人数 = 0
+        数字货币充值笔数 = 0
+
+    # print(数字货币充值人数)
+    # print(数字货币充值笔数)
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+
+    # 获取线上支付人数和笔数，如果没有数据则为0
+    线上支付人数 = float(response_json['data'].get('payOnline', {}).get('totalUser', 0))
+    线上支付笔数 = float(response_json['data'].get('payOnline', {}).get('totalCount', 0))
+    # print(线上支付人数)
+    # print(线上支付笔数)
+
+    # 总存款笔数
+    总存款笔数 = 银行卡充值笔数 + 数字货币充值笔数 + 线上支付笔数
+    print(总存款笔数)
+
+    # 总存款人数
+    总存款人数 = 银行卡充值人数 + 数字货币充值人数 + 线上支付人数
+    print(总存款人数)
+
+    # 总存款
+    总存款金额= float(response_json['data'].get('depositTotal', 0))
+    print(总存款金额)
+
+    # 获取线上存款首存优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'2807',
+        'page': '1',
+        'pageCount': '300'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount = 0
+    total_note_count = 0
+    unique_usernames = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount += float(item['amount'])
+            total_note_count += 1  # 将符合条件的值相加到总和上
+            unique_usernames.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count = len(unique_usernames)
+
+    # print(f"线上存款首存优惠金额: {total_amount}")
+    # print(f"线上存款首存优惠总数量: {total_note_count}")
+    # print(f"线上存款首存优惠总人数: {total_username_count}")
+
+    # 获取线上存款笔笔送优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'2808',
+        'page': '1',
+        'pageCount': '300'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount1 = 0
+    total_note_count1 = 0
+    unique_usernames1 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount1 += float(item['amount'])
+            total_note_count1 += 1  # 将符合条件的值相加到总和上
+            unique_usernames1.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count1 = len(unique_usernames1)  # 最后得到不同用户名的总数
+
+    # print(f"线上存款优惠金额: {total_amount1}")
+    # print(f"线上存款优惠总数量: {total_note_count1}")
+    # print(f"线上存款优惠总人数: {total_username_count1}")
+
+    线上优惠总金额 = total_amount + total_amount1  # 线上存款首存优惠金额和线上存款优惠金额相加的总金额
+    print(f"线上存款优惠总金额: {线上优惠总金额}")
+
+    线上优惠总笔数 = total_note_count + total_note_count1  # 线上存款首存优惠笔数和线上存款优惠笔数相加的总和
+    print(f"线上存款优惠总笔数: {线上优惠总笔数}")
+
+    线上优惠总人数 = len(unique_usernames.union(unique_usernames1))  # 计算总人数（不重复用户名的总数）
+    print(f"线上存款优惠总人数: {线上优惠总人数}")
+
+    # 获取购宝首存优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'2809',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount2 = 0
+    total_note_count2 = 0
+    unique_usernames2 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount2 += float(item['amount'])
+            total_note_count2 += 1  # 将符合条件的值相加到总和上
+            unique_usernames2.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count2 = len(unique_usernames2)  # 最后得到不同用户名的总数
+
+    # print(f"购宝首存优惠金额: {total_amount2}")
+    # print(f"购宝首存优惠总数量: {total_note_count2}")
+    # print(f"购宝首存优惠总人数: {total_username_count2}")
+
+    # 获取购宝存款优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'2810',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount3 = 0
+    total_note_count3 = 0
+    unique_usernames3 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount3 += float(item['amount'])
+            total_note_count3 += 1  # 将符合条件的值相加到总和上
+            unique_usernames3.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count3 = len(unique_usernames3)  # 最后得到不同用户名的总数
+
+    # print(f"购宝存款优惠金额: {total_amount3}")
+    # print(f"购宝存款优惠总数量: {total_note_count3}")
+    # print(f"购宝存款优惠总人数: {total_username_count3}")
+
+    购宝优惠总金额 = total_amount2 + total_amount3  # 购宝存款首存优惠金额和线上存款优惠金额相加的总金额
+    print(f"购宝存款优惠总金额: {购宝优惠总金额}")
+
+    购宝优惠总笔数 = total_note_count2 + total_note_count3  # 购宝存款首存优惠笔数和线上存款优惠笔数相加的总和
+    print(f"购宝存款优惠总笔数: {购宝优惠总笔数}")
+
+    购宝优惠总人数 = len(unique_usernames2.union(unique_usernames3))  # 计算总人数（不重复用户名的总数）
+    print(f"购宝存款优惠总人数: {购宝优惠总人数}")
+
+    # 获取加密货币存款优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'2812',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount4 = 0
+    total_note_count4 = 0
+    unique_usernames4 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount4 += float(item['amount'])
+            total_note_count4 += 1  # 将符合条件的值相加到总和上
+            unique_usernames4.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count4 = len(unique_usernames4)  # 最后得到不同用户名的总数
+
+    # print(f"加密货币存款优惠金额: {total_amount4}")
+    # print(f"加密货币存款优惠总数量: {total_note_count4}")
+    # print(f"加密货币存款优惠总人数: {total_username_count4}")
+
+    加密货币优惠总金额 = total_amount4  # 加密货币存款首存优惠金额和线上存款优惠金额相加的总金额
+    print(f"加密货币优惠总金额: {加密货币优惠总金额}")
+
+    加密货币优惠总笔数 = total_note_count4  # 加密货币存款首存优惠笔数和线上存款优惠笔数相加的总和
+    print(f"加密货币优惠总笔数: {加密货币优惠总笔数}")
+
+    加密货币优惠总人数 = len(unique_usernames4.union(unique_usernames4))  # 计算总人数（不重复用户名的总数）
+    print(f"加密货币优惠总人数: {加密货币优惠总人数}")
+
+    # 获取新会员推荐优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType':'1915',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount5 = 0
+    total_note_count5 = 0
+    unique_usernames5 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount5 += float(item['amount'])
+            total_note_count5 += 1  # 将符合条件的值相加到总和上
+            unique_usernames5.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count5 = len(unique_usernames5)  # 最后得到不同用户名的总数
+
+    # print(f"新会员推荐惠金额: {total_amount5}")
+    # print(f"新会员推荐惠总数量: {total_note_count5}")
+    # print(f"新会员推荐优惠总人数: {total_username_count5}")
+
+    新会员推荐总金额 = total_amount5  # 优惠金额相加的总金额
+    print(f"新会员推荐优惠总金额: {新会员推荐总金额}")
+
+    新会员推荐总笔数 = total_note_count5  # 优惠笔数相加的总和
+    print(f"新会员推荐优惠总笔数: {新会员推荐总笔数}")
+
+    新会员推荐总人数 = len(unique_usernames5.union(unique_usernames5))  # 计算总人数（不重复用户名的总数）
+    print(f"新会员推荐优惠总人数: {新会员推荐总人数}")
+
+
+    # 获取下载、电子得意、棋牌闯关优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '1982',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount6 = 0  # 保存总和的变量
+    total_entries6 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '棋牌闯关●关关有奖' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount6 += amount  # 将符合条件的值相加到总和上
+                        total_entries6 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("棋牌闯关彩金金额:", total_amount6)
+    # print("棋牌闯关彩金人数:", total_entries6)
+
+    棋牌闯关总金额 = total_amount6   # 优惠金额相加的总金额
+    print(f"棋牌闯关优惠总金额: {棋牌闯关总金额}")
+
+    棋牌闯关总笔数 = total_entries6   # 优惠笔数相加的总和
+    print(f"棋牌闯关优惠总笔数: {棋牌闯关总笔数}")
+
+    total_amount7 = 0  # 保存总和的变量
+    total_entries7 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '下载专属加赠彩金' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount7 += amount  # 将符合条件的值相加到总和上
+                        total_entries7 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("下载专属加赠金额:", total_amount7)
+    # print("下载人数:", total_entries7)
+
+    下载专属总金额 = total_amount7  # 优惠金额相加的总金额
+    print(f"下载专属优惠总金额: {下载专属总金额}")
+
+    下载专属总笔数 = total_entries7  # 优惠笔数相加的总和
+    print(f"下载专属优惠总笔数: {下载专属总笔数}")
+
+    total_amount8 = 0  # 保存总和的变量
+    total_entries8 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '电子游艺天天得意金' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount8 += amount  # 将符合条件的值相加到总和上
+                        total_entries8 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子得意彩金金额:", total_amount8)
+    # print("电子得意彩金人数:", total_entries8)
+
+    电子得意总金额 = total_amount8  # 优惠金额相加的总金额
+    print(f"电子得意优惠总金额: {电子得意总金额}")
+
+    电子得意总笔数 = total_entries8  # 优惠笔数相加的总和
+    print(f"电子得意优惠总笔数: {电子得意总笔数}")
+
+    # 定义包含所有电子帝王榜月俸禄note的列表
+    notes_list = [
+        '电子帝王榜●农民月俸禄',
+        '电子帝王榜●地主月俸禄',
+        '电子帝王榜●知县月俸禄',
+        '电子帝王榜●通判月俸禄',
+        '电子帝王榜●知府月俸禄',
+        '电子帝王榜●总督月俸禄',
+        '电子帝王榜●巡抚月俸禄',
+        '电子帝王榜●丞相月俸禄',
+        '电子帝王榜●帝王月俸禄'
+    ]
+    total_amount34 = 0  # 保存总和的变量
+    total_entries34 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note = item['note']
+                if any(note_part in note for note_part in notes_list):
+                    note_number = int(''.join(filter(str.isdigit, note)))  # 提取数字部分
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount34 += amount  # 将符合条件的值相加到总和上
+                        total_entries34 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子帝王榜月俸禄金额:", total_amount34)
+    # print("电子帝王榜月俸禄人数:", total_entries34)
+
+    电子帝王榜月俸禄总金额 = total_amount34  # 优惠金额相加的总金额
+    print(f"电子帝王榜月俸禄优惠总金额: {电子帝王榜月俸禄总金额}")
+
+    电子帝王榜月俸禄总笔数 = total_entries34  # 优惠笔数相加的总和
+    print(f"电子帝王榜月俸禄优惠总笔数: {电子帝王榜月俸禄总笔数}")
+
+    # 获取周周负利大回馈、电子救援、棋牌救援优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '2452',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount9 = 0  # 保存总和的变量
+    total_entries9 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '棋牌救援金' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount9 += amount  # 将符合条件的值相加到总和上
+                        total_entries9 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("棋牌救援金额:", total_amount9)
+    # print("棋牌救援人数:", total_entries9)
+
+    棋牌救援总金额 = total_amount9  # 优惠金额相加的总金额
+    print(f"棋牌救援优惠总金额: {棋牌救援总金额}")
+
+    棋牌救援总笔数 = total_entries9  # 优惠笔数相加的总和
+    print(f"棋牌救援优惠总笔数: {棋牌救援总笔数}")
+
+    total_amount10 = 0  # 保存总和的变量
+    total_entries10 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '电子救援金' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount10 += amount  # 将符合条件的值相加到总和上
+                        total_entries10 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子救援金:", total_amount10)
+    # print("电子救援金人数:", total_entries10)
+
+    电子救援总金额 = total_amount10  # 优惠金额相加的总金额
+    print(f"电子救援优惠总金额: {电子救援总金额}")
+
+    电子救援总笔数 = total_entries10  # 优惠笔数相加的总和
+    print(f"电子救援优惠总笔数: {电子救援总笔数}")
+
+    total_amount11 = 0  # 保存总和的变量
+    total_entries11 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_parts = item['note'].split('_')  # 拆分'note'项以获取数字部分
+                if len(note_parts) == 2 and note_parts[0] == '周周负利大回馈' and len(note_parts[1]) == 4:
+                    note_number = int(note_parts[1])
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount11 += amount  # 将符合条件的值相加到总和上
+                        total_entries11 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("周周负利大回馈金额:", total_amount11)
+    # print("周周负利大回馈人数:", total_entries11)
+
+    周周负利大回馈总金额 = total_amount11  # 优惠金额相加的总金额
+    print(f"周周负利大回馈优惠总金额: {周周负利大回馈总金额}")
+
+    周周负利大回馈总笔数 = total_entries11  # 优惠笔数相加的总和
+    print(f"周周负利大回馈优惠总笔数: {周周负利大回馈总笔数}")
+
+    # 获取百家乐8输9救援金、周末存款欢乐送、午夜“惠”战、彩票得意彩金、捕鱼天天加赠彩金、优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+            'subType': '2523',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount12 = 0  # 保存总和的变量
+    total_entries12 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:捕鱼天天加赠彩金':
+                amount = float(item['amount'])
+                total_amount12 += amount  # 将符合条件的值相加到总和上
+                total_entries12 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("捕鱼加赠金额:", total_amount12)
+    # print("捕鱼加赠人数:", total_entries12)
+
+    捕鱼加赠总金额 = total_amount12  # 优惠金额相加的总金额
+    print(f"捕鱼加赠优惠总金额: {捕鱼加赠总金额}")
+
+    捕鱼加赠总笔数 = total_entries12  # 优惠笔数相加的总和
+    print(f"捕鱼加赠优惠总笔数: {捕鱼加赠总笔数}")
+
+    total_amount13 = 0  # 保存总和的变量
+    total_entries13 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:彩票得意彩金':
+                amount = float(item['amount'])
+                total_amount13 += amount  # 将符合条件的值相加到总和上
+                total_entries13 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("彩票得意彩金:", total_amount13)
+    # print("彩票得意彩金人数:", total_entries13)
+
+    彩票得意总金额 = total_amount13  # 优惠金额相加的总金额
+    print(f"彩票得意优惠总金额: {彩票得意总金额}")
+
+    彩票得意总笔数 = total_entries13  # 优惠笔数相加的总和
+    print(f"彩票得意优惠总笔数: {彩票得意总笔数}")
+
+    total_amount14 = 0  # 保存总和的变量
+    total_entries14 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:百家乐8输9救援金':
+                amount = float(item['amount'])
+                total_amount14 += amount  # 将符合条件的值相加到总和上
+                total_entries14 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("百家乐八输九救援金金额:", total_amount14)
+    # print("百家乐八输九救援金人数:", total_entries14)
+
+    百家乐八输九救援金总金额 = total_amount14  # 优惠金额相加的总金额
+    print(f"百家乐八输九救援金总金额: {百家乐八输九救援金总金额}")
+
+    百家乐八输九救援金总笔数 = total_entries14  # 优惠笔数相加的总和
+    print(f"百家乐八输九救援金优惠总笔数: {百家乐八输九救援金总笔数}")
+
+    total_amount15 = 0  # 保存总和的变量
+    total_entries15 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:周末存款欢乐送':
+                amount = float(item['amount'])
+                total_amount15 += amount  # 将符合条件的值相加到总和上
+                total_entries15 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("周末存款欢乐送金额:", total_amount15)
+    # print("周末存款欢乐送人数:", total_entries15)
+
+    周末存款欢乐总金额 = total_amount15  # 优惠金额相加的总金额
+    print(f"周末存款欢乐优惠总金额: {周末存款欢乐总金额}")
+
+    周末存款欢乐总笔数 = total_entries15  # 优惠笔数相加的总和
+    print(f"周末存款欢乐优惠总笔数: {周末存款欢乐总笔数}")
+
+    total_amount16 = 0  # 保存总和的变量
+    total_entries16 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:午夜“惠”战 放肆狂欢':
+                amount = float(item['amount'])
+                total_amount16 += amount  # 将符合条件的值相加到总和上
+                total_entries16 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("午夜惠战金额:", total_amount16)
+    # print("午夜惠战人数:", total_entries16)
+
+    午夜惠战总金额 = total_amount16  # 优惠金额相加的总金额
+    print(f"午夜惠战优惠总金额: {午夜惠战总金额}")
+
+    午夜惠战总笔数 = total_entries16  # 优惠笔数相加的总和
+    print(f"午夜惠战优惠总笔数: {午夜惠战总笔数}")
+
+    total_amount17 = 0  # 保存总和的变量
+    total_entries17 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:彩票奖上奖':
+                amount = float(item['amount'])
+                total_amount17 += amount  # 将符合条件的值相加到总和上
+                total_entries17 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("彩票奖上奖金额:", total_amount17)
+    # print("彩票奖上奖人数:", total_entries17)
+
+    彩票奖上奖总金额 = total_amount17  # 优惠金额相加的总金额
+    print(f"彩票奖上奖优惠总金额: {彩票奖上奖总金额}")
+
+    彩票奖上奖总笔数 = total_entries17  # 优惠笔数相加的总和
+    print(f"彩票奖上奖优惠总笔数: {彩票奖上奖总笔数}")
+
+    total_amount18 = 0  # 保存总和的变量
+    total_entries18 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:玩转百家乐 额外有惊喜！':
+                amount = float(item['amount'])
+                total_amount18 += amount  # 将符合条件的值相加到总和上
+                total_entries18 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("百家乐额外有惊喜金额:", total_amount18)
+    # print("百家乐额外有惊人数:", total_entries18)
+
+    百家乐额外惊喜总金额 = total_amount18  # 优惠金额相加的总金额
+    print(f"百家乐额外惊喜优惠总金额: {百家乐额外惊喜总金额}")
+
+    百家乐额外惊喜总笔数 = total_entries18  # 优惠笔数相加的总和
+    print(f"百家乐额外惊喜优惠总笔数: {百家乐额外惊喜总笔数}")
+
+    total_amount19 = 0  # 保存总和的变量
+    total_entries19 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:电子加赠彩金':
+                amount = float(item['amount'])
+                total_amount19 += amount  # 将符合条件的值相加到总和上
+                total_entries19 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子加赠彩金金额:", total_amount19)
+    # print("电子加赠彩金人数:", total_entries19)
+
+    电子加赠总金额 = total_amount19  # 优惠金额相加的总金额
+    print(f"电子加赠优惠总金额: {电子加赠总金额}")
+
+    电子加赠总笔数 = total_entries19  # 优惠笔数相加的总和
+    print(f"电子加赠优惠总笔数: {电子加赠总笔数}")
+
+    total_amount20 = 0  # 保存总和的变量
+    total_entries20 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:真人视讯连赢彩金':
+                amount = float(item['amount'])
+                total_amount20 += amount  # 将符合条件的值相加到总和上
+                total_entries20 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("视讯连赢彩金金额:", total_amount20)
+    # print("视讯连赢彩金人数:", total_entries20)
+
+    视讯连赢总金额 = total_amount20  # 优惠金额相加的总金额
+    print(f"视讯连赢优惠总金额: {视讯连赢总金额}")
+
+    视讯连赢总笔数 = total_entries20  # 优惠笔数相加的总和
+    print(f"视讯连赢优惠总笔数: {视讯连赢总笔数}")
+
+    total_amount21 = 0  # 保存总和的变量
+    total_entries21 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:电子游艺逢8必发':
+                amount = float(item['amount'])
+                total_amount21 += amount  # 将符合条件的值相加到总和上
+                total_entries21 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子逢8必发彩金金额:", total_amount21)
+    # print("电子逢8必发彩金人数:", total_entries21)
+
+    电子逢八必发总金额 = total_amount21  # 优惠金额相加的总金额
+    print(f"电子逢八必发优惠总金额: {电子逢八必发总金额}")
+
+    电子逢八必发总笔数 = total_entries21  # 优惠笔数相加的总和
+    print(f"电子逢八必发优惠总笔数: {电子逢八必发总笔数}")
+
+    total_amount22 = 0  # 保存总和的变量
+    total_entries22 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:视讯完美加赠彩金':
+                amount = float(item['amount'])
+                total_amount22 += amount  # 将符合条件的值相加到总和上
+                total_entries22 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("视讯完美加赠彩金金额:", total_amount22)
+    # print("视讯完美加赠彩金人数:", total_entries22)
+
+    视讯完美加赠总金额 = total_amount22  # 优惠金额相加的总金额
+    print(f"视讯完美加赠优惠总金额: {视讯完美加赠总金额}")
+
+    视讯完美加赠总笔数 = total_entries22  # 优惠笔数相加的总和
+    print(f"视讯完美加赠优惠总笔数: {视讯完美加赠总笔数}")
+
+    # 获取活动优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '1053',
+        'pageCount': '300',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    import re
+
+    total_amount24 = 0  # 保存总和的变量
+    total_entries24 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_text = item['note']
+                match = re.search(r'(?<=现金大回馈).*', note_text)
+                if match:
+                    amount = float(item['amount'])
+                    total_amount24 += amount  # 将符合条件的值相加到总和上
+                    total_entries24 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("现金大回馈金额:", total_amount24)
+    # print("大回馈总人数:", total_entries24)
+
+    现金大回馈总金额 = total_amount24  # 优惠金额相加的总金额
+    print(f"现金大回馈优惠总金额: {现金大回馈总金额}")
+
+    现金大回馈总笔数 = total_entries24  # 优惠笔数相加的总和
+    print(f"现金大回馈优惠总笔数: {现金大回馈总笔数}")
+
+    total_amount25 = 0  # 保存总和的变量
+    total_entries25 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_text = item['note']
+                match = re.search(r'(?<=电子红包).*', note_text)
+                if match:
+                    amount = float(item['amount'])
+                    total_amount25 += amount  # 将符合条件的值相加到总和上
+                    total_entries25 += 1  # 每找到一个符合条件的条目，数量加一
+    # print("每日红包金额:", total_amount25)
+    # print("每日红包人数:", total_entries25)
+
+    每日红包总金额 = total_amount25  # 优惠金额相加的总金额
+    print(f"每日红包优惠总金额: {每日红包总金额}")
+
+    每日红包总笔数 = total_entries25  # 优惠笔数相加的总和
+    print(f"每日红包优惠总笔数: {每日红包总笔数}")
+
+    total_amount29 = 0  # 保存总和的变量
+    total_entries29 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:彩票荣耀月俸禄':
+                amount = float(item['amount'])
+                total_amount29 += amount  # 将符合条件的值相加到总和上
+                total_entries29 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("彩票荣耀月俸禄金额:", total_amount29)
+    # print("彩票荣耀月俸禄人数:", total_entries29)
+
+    彩票荣耀月俸禄总金额 = total_amount29  # 优惠金额相加的总金额
+    print(f"彩票荣耀月俸禄优惠总金额: {彩票荣耀月俸禄总金额}")
+
+    彩票荣耀月俸禄总笔数 = total_entries29  # 优惠笔数相加的总和
+    print(f"彩票荣耀月俸禄优惠总笔数: {彩票荣耀月俸禄总笔数}")
+
+    total_amount30 = 0  # 保存总和的变量
+    total_entries30 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:棋牌荣耀月俸禄':
+                amount = float(item['amount'])
+                total_amount30 += amount  # 将符合条件的值相加到总和上
+                total_entries30 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("棋牌荣耀月俸禄金额:", total_amount30)
+    # print("棋牌荣耀月俸禄人数:", total_entries30)
+
+    棋牌荣耀月俸禄总金额 = total_amount30  # 优惠金额相加的总金额
+    print(f"棋牌荣耀月俸禄优惠总金额: {棋牌荣耀月俸禄总金额}")
+
+    棋牌荣耀月俸禄总笔数 = total_entries30  # 优惠笔数相加的总和
+    print(f"棋牌荣耀月俸禄优惠总笔数: {棋牌荣耀月俸禄总笔数}")
+
+    total_amount26 = 0  # 保存总和的变量
+    total_entries26 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item and item['note'] == '活动名称:电子大冲关':
+                amount = float(item['amount'])
+                total_amount26 += amount  # 将符合条件的值相加到总和上
+                total_entries26 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子大冲关金额:", total_amount26)
+    # print("电子大冲关人数:", total_entries26)
+
+    电子大冲关总金额 = total_amount26  # 优惠金额相加的总金额
+    print(f"电子大冲关优惠总金额: {电子大冲关总金额}")
+
+    电子大冲关总笔数 = total_entries26  # 优惠笔数相加的总和
+    print(f"电子大冲关优惠总笔数: {电子大冲关总笔数}")
+
+    total_amount40 = 0  # 保存总和的变量
+    total_entries40 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note_text = item['note']
+                match = re.search(r'(?<=神秘彩金).*', note_text)
+                if match:
+                    amount = float(item['amount'])
+                    total_amount40 += amount  # 将符合条件的值相加到总和上
+                    total_entries40 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("神秘彩金额:", total_amount40)
+    # print("神秘彩人数:", total_entries40)
+
+    神秘彩金总金额 = total_amount40  # 优惠金额相加的总金额
+    print(f"神秘彩金优惠金额: {神秘彩金总金额}")
+
+    神秘彩金总笔数 = total_entries40  # 优惠笔数相加的总和
+    print(f"神秘彩金优惠笔数: {神秘彩金总笔数}")
+
+    # 获取电子帝王、棋牌荣耀、彩票荣耀榜晋级优惠金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '1833',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount27 = 0  # 保存总和的变量
+    total_entries27 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note = item['note']
+                if '电子帝王榜晋级金_晋级礼金' in note:
+                    note_number = int(''.join(filter(str.isdigit, note)))  # 提取数字部分
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount27 += amount  # 将符合条件的值相加到总和上
+                        total_entries27 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("电子帝王榜晋级金额:", total_amount27)
+    # print("电子帝王榜晋级人数:", total_entries27)
+
+    电子帝王榜晋级总金额 = total_amount27  # 优惠金额相加的总金额
+    print(f"电子帝王榜晋级优惠总金额: {电子帝王榜晋级总金额}")
+
+    电子帝王榜晋级总笔数 = total_entries27  # 优惠笔数相加的总和
+    print(f"电子帝王榜晋级优惠总笔数: {电子帝王榜晋级总笔数}")
+
+    total_amount30 = 0  # 保存总和的变量
+    total_entries30 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note = item['note']
+                if '棋牌荣耀晋级礼金_晋级礼金' in note:
+                    note_number = int(''.join(filter(str.isdigit, note)))  # 提取数字部分
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount30 += amount  # 将符合条件的值相加到总和上
+                        total_entries30 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("棋牌荣耀晋级金额:", total_amount30)
+    # print("棋牌荣耀晋级人数:", total_entries30)
+
+    棋牌荣耀晋级总金额 = total_amount30  # 优惠金额相加的总金额
+    print(f"棋牌荣耀晋级优惠总金额: {棋牌荣耀晋级总金额}")
+
+    棋牌荣耀晋级总笔数 = total_entries30  # 优惠笔数相加的总和
+    print(f"棋牌荣耀晋级优惠总笔数: {棋牌荣耀晋级总笔数}")
+
+    total_amount31 = 0  # 保存总和的变量
+    total_entries31 = 0  # 记录符合条件的条目数量的变量
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            if 'note' in item:
+                note = item['note']
+                if '彩票荣耀晋级礼金_晋级礼金' in note:
+                    note_number = int(''.join(filter(str.isdigit, note)))  # 提取数字部分
+                    if 101 <= note_number <= 999:
+                        amount = float(item['amount'])
+                        total_amount31 += amount  # 将符合条件的值相加到总和上
+                        total_entries31 += 1  # 每找到一个符合条件的条目，数量加一
+
+    # print("彩票荣耀晋级金额:", total_amount31)
+    # print("彩票荣耀晋级人数:", total_entries31)
+
+    彩票荣耀晋级总金额 = total_amount31  # 优惠金额相加的总金额
+    print(f"彩票荣耀晋级优惠总金额: {彩票荣耀晋级总金额}")
+
+    彩票荣耀晋级总笔数 = total_entries31  # 优惠笔数相加的总和
+    print(f"彩票荣耀晋级优惠总笔数: {彩票荣耀晋级总金额}")
+
+    # 获取BBin活动奖金优惠
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '1548',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount33 = 0
+    total_note_count33 = 0
+    unique_usernames33 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount33 += float(item['amount'])
+            total_note_count33 += 1  # 将符合条件的值相加到总和上
+            unique_usernames33.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count33 = len(unique_usernames33)  # 最后得到不同用户名的总数
+
+    # print(f"波音活动奖金金额: {total_amount33}")
+    # print(f"波音活动奖金总数量: {total_note_count33}")
+    # print(f"波音活动奖金总人数: {total_username_count33}")
+
+    波音活动奖金总金额 = total_amount33  # 优惠金额相加的总金额
+    print(f"波音活动奖金优惠总金额: {波音活动奖金总金额}")
+
+    波音活动奖金总笔数 = total_note_count33  # 优惠笔数相加的总和
+    print(f"波音活动奖金优惠总笔数: {波音活动奖金总笔数}")
+
+    波音活动奖金总人数 = len(unique_usernames33.union(unique_usernames33))  # 计算总人数（不重复用户名的总数）
+    print(f"波音活动奖金优惠总人数: {波音活动奖金总人数}")
+
+    # 获取签到奖金优惠
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': 开始时间,
+        'endTime': 结束时间,
+        'reportType': 'promotion',
+        'subType': '2922',
+        'pageCount': '200',
+        'page': '1'
+    }
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    json_data = response.json()
+
+    total_amount34 = 0
+    total_note_count34 = 0
+    unique_usernames34 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount34 += float(item['amount'])
+            total_note_count34 += 1  # 将符合条件的值相加到总和上
+            unique_usernames34.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count34 = len(unique_usernames34)  # 最后得到不同用户名的总数
+
+    # print(f"签到优惠总金额金额: {total_amount34}")
+    # print(f"签到优惠总总数量: {total_note_count34}")
+    # print(f"签到优惠总人数: {total_username_count34}")
+
+    签到总金额 = total_amount34  # 优惠金额相加的总金额
+    print(f"签到优惠总金额: {签到总金额}")
+
+    签到总笔数 = total_note_count34  # 优惠笔数相加的总和
+    print(f"签到优惠总笔数: {签到总笔数}")
+
+    签到总人数 = len(unique_usernames34.union(unique_usernames34))  # 计算总人数（不重复用户名的总数）
+    print(f"签到优惠总人数: {签到总人数}")
+
+    # 打开工作簿
+    wb = load_workbook('金沙每日彩金数据.xlsx')
+
+    # 选择要操作的表格
+    ws = wb['Sheet1']
+
+    # 写入数据
+    ws.cell(row=3, column=2, value=总存款人数)
+    ws.cell(row=3, column=3, value=总存款笔数)
+    ws.cell(row=3, column=4, value=总存款金额)
+    ws.cell(row=4, column=2, value=给予反水人数)
+    ws.cell(row=4, column=3, value=给予反水笔数)
+    ws.cell(row=4, column=4, value=给予反水金额)
+    ws.cell(row=5, column=2, value=线上优惠总人数)
+    ws.cell(row=5, column=3, value=线上优惠总笔数)
+    ws.cell(row=5, column=4, value=线上优惠总金额)
+    ws.cell(row=6, column=2, value=加密货币优惠总人数)
+    ws.cell(row=6, column=3, value=加密货币优惠总笔数)
+    ws.cell(row=6, column=4, value=加密货币优惠总金额)
+    ws.cell(row=9, column=2, value=购宝优惠总人数)
+    ws.cell(row=9, column=3, value=购宝优惠总笔数)
+    ws.cell(row=9, column=4, value=购宝优惠总金额)
+    ws.cell(row=10, column=2, value=新会员推荐总人数)
+    ws.cell(row=10, column=3, value=新会员推荐总笔数)
+    ws.cell(row=10, column=4, value=新会员推荐总金额)
+    ws.cell(row=11, column=3, value=电子得意总笔数)
+    ws.cell(row=11, column=4, value=电子得意总金额)
+    ws.cell(row=12, column=3, value=下载专属总笔数)
+    ws.cell(row=12, column=4, value=下载专属总金额)
+    ws.cell(row=13, column=3, value=棋牌闯关总笔数)
+    ws.cell(row=13, column=4, value=棋牌闯关总金额)
+    ws.cell(row=14, column=3, value=棋牌救援总笔数)
+    ws.cell(row=14, column=4, value=棋牌救援总金额)
+    ws.cell(row=15, column=3, value=电子救援总笔数)
+    ws.cell(row=15, column=4, value=电子救援总金额)
+    ws.cell(row=16, column=2, value=签到总人数)
+    ws.cell(row=16, column=3, value=签到总笔数)
+    ws.cell(row=16, column=4, value=签到总金额)
+    ws.cell(row=17, column=3, value=电子大冲关总笔数)
+    ws.cell(row=17, column=4, value=电子大冲关总金额)
+    ws.cell(row=18, column=3, value=电子帝王榜月俸禄总笔数)
+    ws.cell(row=18, column=4, value=电子帝王榜月俸禄总金额)
+    ws.cell(row=19, column=3, value=电子帝王榜晋级总笔数)
+    ws.cell(row=19, column=4, value=电子帝王榜晋级总金额)
+    ws.cell(row=20, column=3, value=神秘彩金总笔数)
+    ws.cell(row=20, column=4, value=神秘彩金总金额)
+    ws.cell(row=21, column=3, value=棋牌荣耀晋级总笔数)
+    ws.cell(row=21, column=4, value=棋牌荣耀晋级总金额)
+    ws.cell(row=22, column=3, value=彩票荣耀晋级总笔数)
+    ws.cell(row=22, column=4, value=彩票荣耀晋级总金额)
+    ws.cell(row=23, column=3, value=棋牌荣耀月俸禄总笔数)
+    ws.cell(row=23, column=4, value=棋牌荣耀月俸禄总金额)
+    ws.cell(row=24, column=3, value=彩票荣耀月俸禄总笔数)
+    ws.cell(row=24, column=4, value=彩票荣耀月俸禄总金额)
+    ws.cell(row=25, column=3, value=现金大回馈总笔数)
+    ws.cell(row=25, column=4, value=现金大回馈总金额)
+    ws.cell(row=26, column=3, value=周周负利大回馈总笔数)
+    ws.cell(row=26, column=4, value=周周负利大回馈总金额)
+    ws.cell(row=28, column=3, value=电子加赠总笔数)
+    ws.cell(row=28, column=4, value=电子加赠总金额)
+    ws.cell(row=31, column=3, value=周末存款欢乐总笔数)
+    ws.cell(row=31, column=4, value=周末存款欢乐总金额)
+    ws.cell(row=32, column=3, value=彩票得意总笔数)
+    ws.cell(row=32, column=4, value=彩票得意总金额)
+    ws.cell(row=34, column=3, value=彩票奖上奖总笔数)
+    ws.cell(row=34, column=4, value=彩票奖上奖总金额)
+    ws.cell(row=35, column=3, value=百家乐额外惊喜总笔数)
+    ws.cell(row=35, column=4, value=百家乐额外惊喜总金额)
+    ws.cell(row=36, column=3, value=视讯连赢总笔数)
+    ws.cell(row=36, column=4, value=视讯连赢总金额)
+    ws.cell(row=37, column=3, value=捕鱼加赠总笔数)
+    ws.cell(row=37, column=4, value=捕鱼加赠总金额)
+    ws.cell(row=38, column=3, value=电子逢八必发总笔数)
+    ws.cell(row=38, column=4, value=电子逢八必发总金额)
+    ws.cell(row=39, column=3, value=每日红包总笔数)
+    ws.cell(row=39, column=4, value=每日红包总金额)
+    ws.cell(row=40, column=3, value=午夜惠战总笔数)
+    ws.cell(row=40, column=4, value=午夜惠战总金额)
+    ws.cell(row=41, column=3, value=百家乐八输九救援金总笔数)
+    ws.cell(row=41, column=4, value=百家乐八输九救援金总金额)
+    ws.cell(row=43, column=3, value=视讯完美加赠总笔数)
+    ws.cell(row=43, column=4, value=视讯完美加赠总金额)
+    ws.cell(row=48, column=2, value=波音活动奖金总人数)
+    ws.cell(row=48, column=3, value=波音活动奖金总笔数)
+    ws.cell(row=48, column=4, value=波音活动奖金总金额)
+
+    # 保存工作簿
+    wb.save("金沙每日彩金数据.xlsx")
+    # 自动打开表格
+    os.startfile('金沙每日彩金数据.xlsx')
+
+
+if __name__ == '__main__':
+    start()
+
