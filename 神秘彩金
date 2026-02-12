@@ -1,0 +1,72 @@
+import requests
+from openpyxl import Workbook
+import os
+import random
+
+url = 'https://cr168.mne-xoek35.com/hex/member/bet_statistics/overview'
+
+token = 'langx=zh-cn; langcode=zh-cn; p_service=in; _ga=GA1.1.1815977960.1748590630; lang=zh-cn; _ga_PSQYC1S04W=GS2.1.s1750860029$o1$g1$t1750862273$j57$l0$h0; aglvl=bbe829d63bba79e183e49d810fd8f0c3aa5b79c4h3; aghid=5693463817599; sid=bb148d3e73cadfdfb7d98af580399bca349338ca94; agent_popup_once=true; _ga_BNX1GGP11V=GS2.1.s1751774049$o79$g1$t1751774077$j32$l0$h0; _ga_9HB94Z7NZS=GS2.1.s1751776397$o40$g0$t1751776399$j58$l0$h0; _ga_EC1SD0EQCW=GS2.1.s1751776397$o40$g0$t1751776399$j58$l0$h0; _ga_L22V2XGZW2=GS2.1.s1751776393$o49$g1$t1751777385$j60$l0$h0'
+
+headers = {
+    'accept': 'application/json, text/plain, */*',
+    'accept-language': 'zh-CN,zh;q=0.9',
+    'content-type': 'application/json',
+    'origin': 'https://cr168.mne-xoek35.com',
+    'permname': 'GeneralMember',
+    'priority': 'u=1, i',
+    'referer': 'https://cr168.mne-xoek35.com/v3/member/bet-statistics/index?timestamp=1741149747050',
+    'route': 'Agent',
+    'sec-ch-ua': '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    'x-requested-with': 'XMLHttpRequest',
+    'cookie': token,
+}
+
+json_data = {
+    'date_type': 1,
+    'start_date': '2025-06-01',
+    'end_date': '2025-06-30',
+    'search_mode': 'user',
+    'usernames': [],
+    'sort': 'commissionable',
+    'order': 'desc',
+    'page': 1,
+    'limit': 1000,
+}
+
+response = requests.post(url=url, headers=headers, json=json_data, verify=False)
+if response.status_code == 200:
+    data = response.json().get('data').get('list')
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['会员账号', '层级', '存款总额', '取款总额', '存取差', '彩金'])
+    for item in data:
+        会员账号 = item.get('user_account')
+        层级 = item.get('level_id')
+        if 层级 == 2776:  # 2776是洗水层级，不需要计算
+            continue
+        if 层级 == 16066:  # 16066是不给返水层级，不需要计算
+            continue
+        存款总额 = item.get('deposit').get('amount')
+        取款总额 = item.get('withdraw').get('amount')
+        存取差 = item.get('balance_of_payment')
+        if 存取差 < 1:
+            continue
+
+        # 生成0.15到0.25之间的随机数
+        random_multiplier = random.uniform(0.015, 0.025)
+        彩金 = int(存取差 * random_multiplier)  # 直接转为整数
+
+        ws.append([会员账号, 层级, 存款总额, 取款总额, 存取差, 彩金])
+
+    wb.save('神秘彩金.xlsx')
+    os.startfile('神秘彩金.xlsx')
+
+
+
