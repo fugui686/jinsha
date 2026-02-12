@@ -1,0 +1,679 @@
+import requests
+import json
+from urllib3.exceptions import InsecureRequestWarning
+from openpyxl import load_workbook
+import pandas as pd
+from datetime import datetime, timedelta
+import os
+import configparser
+
+
+def read_cookies():
+    config = configparser.ConfigParser()
+    config.read('cookies.ini', encoding='utf-8')  # 指定编码为utf-8
+    cookies = config.get('cookies', 'cookies')  # 获取cookies的值
+    return cookies
+
+def update_cookies(new_cookies):
+    config = configparser.ConfigParser()
+    config.read('cookies.ini')
+    config['cookies'] = {'cookies': new_cookies}  # 修改为字典类型
+    with open('cookies.ini', 'w', encoding='utf-8') as config_file:  # 指定编码为utf-8
+        config.write(config_file)
+
+def start():
+    # 读取cookie信息
+    cookies = read_cookies()
+    # 禁用 SSL 证书验证警告
+    requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
+
+    # 定义美东时间与北京时间的时差为12小时
+    time_difference_hours = 12
+
+    # 获取当前美东时间
+    current_time = datetime.now() - timedelta(hours=time_difference_hours)
+
+    # 格式化美东时间
+    formatted_datetime = current_time.strftime('%Y-%m-%d %H:%M:%S')
+
+    # 获取美东日期
+    美东日期 = current_time.strftime('%Y-%m-%d')
+
+    # 获取周起始日期
+    week_start_date = (current_time - timedelta(days=6)).strftime('%Y-%m-%d')
+    usa_starttime_data = 美东日期 + " 00:00:00"
+    usa_endtime_data = 美东日期 + " 23:59:59"
+
+    # 打印美东日期和时间
+    print("美东日期:", 美东日期)
+    print("美东时间:", formatted_datetime)
+    print("美东当天开始时间:", usa_starttime_data)
+    print("美东当天结束时间:", usa_endtime_data)
+    print("周起始日期:", week_start_date)
+    print("美东日期:", 美东日期)
+
+    url = "https://cr168.mne-xoek35.com/agv3/cl/index.php"
+    params = {
+        "module": "GeneralLedger3",
+        "method": "ledgerL1",
+        "currency": "RMB",
+        "startTime": usa_starttime_data,
+        "endTime": usa_endtime_data
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/cl/index.php?module=GeneralLedger3&method=ledgerL1",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+
+    银行卡充值金额 = float(response_json['data']['company']['amount'])
+    银行卡充值人数 = float(response_json['data']['company']['totalUser'])
+
+    公司出款 = float(response_json['data']['companyWithdraw']['amount'])
+    线上出款 = float(response_json['data']['withdraw']['amount'])
+    货币出款 = float(response_json['data']['cryptoWithdraw']['amount'])
+    总取款 = 线上出款 + 货币出款 + 公司出款
+
+    # 打印company中amount和totalUser的值
+    print(银行卡充值金额)
+    print(银行卡充值人数)
+    # 打印withdrawTotal的值
+    print(总取款)
+
+
+    if 'data' in response_json and 'cryptoDeposit' in response_json['data']:
+        数字货币充值金额 = float(response_json['data']['cryptoDeposit']['amount'])
+        数字货币充值人数 = float(response_json['data']['cryptoDeposit']['totalUser'])
+    else:
+        数字货币充值金额 = 0
+        数字货币充值人数 = 0
+
+    print(数字货币充值金额)
+    print(数字货币充值人数)
+
+    # 获取线上支付金额与人数，如果没有数据则为0
+    线上支付人数 = float(response_json['data'].get('payOnline', {}).get('totalUser', 0))
+    线上支付金额 = float(response_json['data'].get('payOnline', {}).get('amount', 0))
+    print(线上支付人数)
+    print(线上支付金额)
+    # 获取线上出款人数，如果没有数据则为0
+    线上出款人数 = float(response_json['data'].get('withdraw', {}).get('totalUser', 0))
+    print(线上出款人数)
+    # 获取公司出款人数，如果没有数据则为0
+    公司出款人数 = float(response_json['data'].get('companyWithdraw', {}).get('totalUser', 0))
+    print(公司出款人数)
+    # 获取数字货币出款金额/人数，如果没有数据则为0
+    数字货币出款金额 = float(response_json['data'].get('cryptoWithdraw', {}).get('amount', 0))
+    数字货币出款人数 = float(response_json['data'].get('cryptoWithdraw', {}).get('totalUser', 0))
+    print(数字货币出款金额)
+    print(数字货币出款人数)
+
+    # 总存取人数
+    总存款人数 = 银行卡充值人数 + 数字货币充值人数 + 线上支付人数
+    print(总存款人数)
+    总出款人数 = 线上出款人数 + 数字货币出款人数 + 公司出款人数
+    print(总出款人数)
+    总存款金额 = 银行卡充值金额 + 线上支付金额 + 数字货币充值金额
+    print("{:.2f}".format(总存款金额))
+
+    #购宝钱包--------------------------------------------
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+
+    params = {
+        "module": "GeneralLedger3",
+        "method": "ledgerL3",
+        "currency": "RMB",
+        "startTime": usa_starttime_data,
+        "endTime": usa_endtime_data,
+        "reportType": "payOnline",
+        "subType": "163533",
+        "pageCount": "200",
+        "page": "1"
+    }
+
+    headers = {
+        'Referer': 'https://cr168.mne-xoek35.com/agv3/web/main/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0',
+        'Cookie': cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+
+    # 获取购宝钱包充值金额，如果没有数据则为0
+    购宝钱包充值金额 = float(response_json['data'].get('total', 0))
+    print("{:.2f}".format(购宝钱包充值金额))
+
+    # 获取购宝钱包充值人数，如果没有数据则为0
+    data = response_json['data'].get('list', [])
+    用户名列表 = [item.get('username', '') for item in data]
+    购宝钱包充值人数 = len(set(用户名列表))
+    print('购包充值人数:',购宝钱包充值人数)
+
+    # 获取vippay,kdou,cgpay,mppay充值金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL2',
+        'currency': 'RMB',
+        'startTime': usa_starttime_data,
+        'endTime': usa_endtime_data,
+        'reportType': 'payOnline',
+        'page': '1',
+        'pageCount': '20'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response.raise_for_status()  # 如果请求失败（非200状态码），会抛出异常
+
+    json_data = response.json()
+
+    amount_vippay = 0
+    amount_kdou = 0
+    amount_cgpay = 0
+    amount_bobi = 0
+    amount_mppay = 0
+
+    if 'data' in json_data and 'itemList' in json_data['data']:
+        for item in json_data['data']['itemList']:
+            if 'name' in item and item['name'] == 'VIPpay-1-VIPpay':
+                amount_vippay = float(item['amount'])
+                break
+
+    if 'data' in json_data and 'itemList' in json_data['data']:
+        for item in json_data['data']['itemList']:
+            if 'name' in item and item['name'] == 'K豆支付-K豆支付':
+                amount_kdou = float(item['amount'])
+                break
+
+    if 'data' in json_data and 'itemList' in json_data['data']:
+        for item in json_data['data']['itemList']:
+            if 'name' in item and item['name'] == 'CGPay-CGPay':
+                amount_cgpay = float(item['amount'])
+                break
+
+    if 'data' in json_data and 'itemList' in json_data['data']:
+        for item in json_data['data']['itemList']:
+            if 'name' in item and item['name'] == '波币-波币':
+                amount_bobi = float(item['amount'])
+                break
+
+    if 'data' in json_data and 'itemList' in json_data['data']:
+        for item in json_data['data']['itemList']:
+            if 'name' in item and item['name'] == 'Mpay-MP钱包':
+                amount_mppay = float(item['amount'])
+                break
+
+    print('vip充值金额',f'{amount_vippay}')
+    print('K豆充值金额',f'{amount_kdou}')
+    print('CQ充值金额',f'{amount_cgpay}')
+    print('波币充值金额:',f'{amount_bobi}')
+    print('MP钱包充值金额:', f'{amount_mppay}')
+
+
+    虚拟币充值 = 购宝钱包充值金额 + amount_vippay + amount_kdou + amount_cgpay + amount_bobi + amount_mppay
+    print(f'{虚拟币充值}')
+
+    # 获取第三方优盈支付充
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': usa_starttime_data,
+        'endTime': usa_endtime_data,
+        'reportType': 'payOnline',
+        'subType': '152818',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response.raise_for_status()  # 如果请求失败（非200状态码），会抛出异常
+
+    json_data = response.json()
+
+    total_amount5 = 0
+    total_note_count5 = 0
+    unique_usernames5 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount5 += float(item['amount'])
+            total_note_count5 += 1  # 将符合条件的值相加到总和上
+            unique_usernames5.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count5 = len(unique_usernames5)  # 最后得到不同用户名的总数
+
+    # print(f"优盈支付总金额: {total_amount5}")
+    # print(f"优盈支付总数量: {total_note_count5}")
+    # print(f"优盈支付总人数: {total_username_count5}")
+
+    优盈支付总金额 = total_amount5  # 优惠金额相加的总金额
+    # print(f"优盈支付总金额: {优盈支付总金额}")
+
+    优盈支付总笔数 = total_note_count5  # 优惠笔数相加的总和
+    # print(f"优盈支付总笔数: {优盈支付总笔数}")
+
+    优盈支付总人数 = len(unique_usernames5.union(unique_usernames5))  # 计算总人数（不重复用户名的总数）
+    # print(f"优盈支付总人数: {优盈支付总人数}")
+
+    # 获取第三方鸿蒙3.0支付充值金额
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+    params = {
+        'module': 'GeneralLedger3',
+        'method': 'ledgerL3',
+        'currency': 'RMB',
+        'startTime': usa_starttime_data,
+        'endTime': usa_endtime_data,
+        'reportType': 'payOnline',
+        'subType': '144334',
+        'page': '1',
+        'pageCount': '200'
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0',
+        'Host': 'cr168.mne-xoek35.com',
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response.raise_for_status()  # 如果请求失败（非200状态码），会抛出异常
+
+    json_data = response.json()
+
+    total_amount6 = 0
+    total_note_count6 = 0
+    unique_usernames6 = set()
+
+    if 'data' in json_data and 'list' in json_data['data']:
+        for item in json_data['data']['list']:
+            total_amount6 += float(item['amount'])
+            total_note_count6 += 1  # 将符合条件的值相加到总和上
+            unique_usernames6.add(item['username'])  # 集合来记录不同的用户名，确保每个用户名只被计算一次
+
+    total_username_count6 = len(unique_usernames6)  # 最后得到不同用户名的总数
+
+    # print(f"鸿蒙支付存款金额: {total_amount6}")
+    # print(f"鸿蒙支付存款总数量: {total_note_count6}")
+    # print(f"鸿蒙支付存款总人数: {total_username_count6}")
+
+    鸿蒙支付存款总金额 = total_amount6  # 优惠金额相加的总金额
+    # print(f"鸿蒙支付存款总金额: {鸿蒙支付存款总金额}")
+
+    鸿蒙支付存款总笔数 = total_note_count6  # 优惠笔数相加的总和
+    # print(f"鸿蒙支付存款总笔数: {鸿蒙支付存款总笔数}")
+
+    鸿蒙支付存款总人数 = len(unique_usernames6.union(unique_usernames6))  # 计算总人数（不重复用户名的总数）
+    # print(f"鸿蒙支付存款总人数: {新会员推荐总人数}")
+
+    第三方充值金额 = 鸿蒙支付存款总金额 + 优盈支付总金额
+    print(f'{第三方充值金额}')
+
+    第三方充值人数 = 鸿蒙支付存款总人数 + 优盈支付总人数
+    print(f'{第三方充值人数}')
+
+    url = 'https://cr168.mne-xoek35.com/agv3/cl/index.php'
+
+    headers = {
+        'Referer': 'https://cr168.mne-xoek35.com/agv3/web/main/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0',
+        'Cookie': cookies
+    }
+
+    # 定义不同钱包参数值
+    subTypes = ["163531", "163533","163715", "169189", "169664", "169916"]
+
+    # 初始化累加变量
+    total_recharge_count = 0
+
+    for subType in subTypes:
+        params = {
+            "module": "GeneralLedger3",
+            "method": "ledgerL3",
+            "currency": "RMB",
+            "startTime": usa_starttime_data,
+            "endTime": usa_endtime_data,
+            "reportType": "payOnline",
+            "subType": subType,
+            "pageCount": "200",
+            "page": "1"
+        }
+
+        response = requests.get(url, params=params, headers=headers, verify=False)
+        response_json = json.loads(response.text)
+        data = response_json['data'].get('list', [])
+        usernames = [item.get('username', '') for item in data]
+        recharge_count = len(set(usernames))
+
+        total_recharge_count += recharge_count
+
+    # 打印所有不同参数钱包对应的充值人数总和
+    print(f'钱包的充值人数总和: {total_recharge_count}')
+
+    #购包钱包,CGOPAY,K豆,波币出款金额/人数
+    url = "https://cr168.mne-xoek35.com/agv3/callduck/api/cash-withdrawal/withdrawal-record/list"
+    params = {
+            "hallId": "",
+            "dateType": "lastModify",
+            "page": "1",
+            "pageCount": "200",
+            "reload": "N",
+            "maxWithdrawalId": "650414447",
+            "currency": "CNY",
+            "startTime": usa_starttime_data,
+            "endTime": usa_endtime_data,
+            "statusTypeList[]": "confirm",
+            "merchantId": '13173'
+        }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/web/main/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+    # 购包出款金额/人数
+    try:
+        wallet_amount = float(response_json['data']['totalAmount']['applyAmount'])
+    except KeyError:
+        wallet_amount = 0
+    print('购包出款金额',f"{wallet_amount}")
+
+    json_data = response.json()
+    df = pd.json_normalize(json_data['data']['list'])
+    df.drop_duplicates(subset=['username'], inplace=True)
+    购宝出款人数 = len(df)
+    if 购宝出款人数 > 0:
+        print('购包出款人数:',f'{购宝出款人数}')
+    else:
+        print(0)
+
+    # Kdou出款金额/人数
+    url = "https://cr168.mne-xoek35.com/agv3/callduck/api/cash-withdrawal/withdrawal-record/list"
+    params = {
+        "hallId": "",
+        "dateType": "lastModify",
+        "page": "1",
+        "pageCount": "200",
+        "reload": "N",
+        "maxWithdrawalId": "650414447",
+        "currency": "CNY",
+        "startTime": usa_starttime_data,
+        "endTime": usa_endtime_data,
+        "statusTypeList[]": "confirm",
+        "merchantId": "14455"
+    }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/web/main/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+    try:
+        Kdou出款金额 = float(response_json['data']['totalAmount']['withdrawalAmount'])
+    except KeyError:
+        Kdou出款金额 = 0
+    print(f"{Kdou出款金额}")
+
+    json_data = response.json()
+    # 将JSON转换为pandas DataFrame对象
+    df = pd.json_normalize(json_data['data']['list'])
+    # 去除重复行'username'
+    df.drop_duplicates(subset=['username'], inplace=True)
+    # 获取去重后的行数
+    Kdou出款人数 = len(df)
+    if Kdou出款人数 > 0:
+        print(f'{Kdou出款人数}')
+    else:
+        print(0)
+
+    # CGPay 出款金额/人数
+    url = "https://cr168.mne-xoek35.com/agv3/callduck/api/cash-withdrawal/withdrawal-record/list"
+    params = {
+        "hallId": "",
+        "dateType": "lastModify",
+        "page": "1",
+        "pageCount": "200",
+        "reload": "N",
+        "maxWithdrawalId": "650414447",
+        "currency": "CNY",
+        "startTime": usa_starttime_data,
+        "endTime": usa_endtime_data,
+        "statusTypeList[]": "confirm",
+        "merchantId": "13166"
+    }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/web/main/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+    try:
+        cgpay出款金额 = float(response_json['data']['totalAmount']['withdrawalAmount'])
+    except KeyError:
+        cgpay出款金额 = 0
+    print(f"{cgpay出款金额}")
+
+    # CGPay出款人数
+    json_data = response.json()
+    # 将JSON转换为pandas DataFrame对象
+    df = pd.json_normalize(json_data['data']['list'])
+    # 去除重复行'username'
+    df.drop_duplicates(subset=['username'], inplace=True)
+    # 获取去重后的行数
+    cgpay出款人数 = len(df)
+    if cgpay出款人数 > 0:
+        print('CGpay出款人数:',f'{cgpay出款人数}')
+    else:
+        print('CGpay出款人数:',0)
+
+    # 波币出款金额/人数
+    url = "https://cr168.mne-xoek35.com/agv3/callduck/api/cash-withdrawal/withdrawal-record/list"
+    params = {
+        "hallId": "",
+        "dateType": "lastModify",
+        "page": "1",
+        "pageCount": "200",
+        "reload": "N",
+        "maxWithdrawalId": "650414447",
+        "currency": "CNY",
+        "startTime": usa_starttime_data,
+        "endTime": usa_endtime_data,
+        "statusTypeList[]": "confirm",
+        "merchantId": "14690"
+    }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://cr168.mne-xoek35.com/agv3/web/main/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0",
+        "Cookie": cookies
+    }
+
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+    try:
+        bobi出款金额 = float(response_json['data']['totalAmount']['withdrawalAmount'])
+    except KeyError:
+        bobi出款金额 = 0
+    print('波币出款金额:',f"{bobi出款金额}")
+
+    json_data = response.json()
+    df = pd.json_normalize(json_data['data']['list'])
+    df.drop_duplicates(subset=['username'], inplace=True)
+    bobi出款人数 = len(df)
+    if bobi出款人数 > 0:
+        print('波币出款人数:',f'{bobi出款人数}')
+    else:
+        print('波币出款人数:',0)
+
+    虚拟货币出款人数 = 数字货币出款人数 + 购宝出款人数 + Kdou出款人数 + cgpay出款人数 + bobi出款人数
+    print(虚拟货币出款人数)
+    虚拟货币出款金额 = 数字货币出款金额 + wallet_amount + Kdou出款金额 + cgpay出款金额 + bobi出款金额
+    print(f"{虚拟货币出款金额}")
+
+
+    #新增注册/充值人数
+    url = "https://cr168.mne-xoek35.com/report/charts/count_first"
+    headers = {
+        "Referer": "https://cr168.mne-xoek35.com/report/charts/charts",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0",
+        "Cookie": cookies
+    }
+    params = {
+        "param1": "value1",
+        "param2": "value2"
+    }
+    response = requests.get(url, headers=headers, params=params, verify=False)
+
+    if response.status_code == 200:
+        data = response.json()['data']
+        for item in data['chartdata']:
+            if item['date'] == 美东日期:
+                首存人数 = int(item['deposit'])
+                注册人数 = int(item['create'])
+                print(f"{首存人数}")
+                print(f"{注册人数}")
+                break
+    else:
+        print(f"{response.status_code}")
+
+    #在线人数
+    url = 'https://cr168.mne-xoek35.com/hex/user/online'
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0',
+        'Referer': 'https://cr168.mne-xoek35.com/vi/v0/1387',
+        'Cookie': cookies,
+    }
+
+    response = requests.get(url, headers=headers, verify=False)
+    response_json = json.loads(response.text)
+    在线人数 = float(response_json['data'])
+    print(在线人数)
+
+    # 报表数据获取
+    url = "https://cr168.mne-xoek35.com/report/charts/game_detail"
+    params = {
+        "searchtype": "today"
+    }
+
+    # 设置请求头
+    headers = {
+        "Referer": "https://cr168.mne-xoek35.com/report/charts/charts",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Cookie": cookies
+    }
+
+    # 发送HTTPS GET请求
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    data = response.json()
+
+    # 提取BetAmount和Payoff的数值并去除逗号
+    总打码 = float(data['data']['total']['BetAmount'].replace(',', ''))
+    盈亏金额 = float(data['data']['total']['Payoff'].replace(',', ''))
+
+    # 打印数值
+    print(总打码)
+    print(盈亏金额)
+
+    #投注人数数据获取
+    url = "https://cr168.mne-xoek35.com/report/charts/game_enable_member"
+    params = {
+        "startdate": week_start_date,
+        "enddate": 美东日期
+    }
+
+    # 设置请求头
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0",
+        "Referer": "https://cr168.mne-xoek35.com/report/charts/charts",
+        "Cookie": cookies
+    }
+
+    # 发送HTTP GET请求
+    response = requests.get(url, params=params, headers=headers, verify=False)
+    data = response.json()
+    game_group_data = data['data']['chart_data']['everyday'][美东日期]['game_group']
+
+    game_types = {
+        "\u7535\u5b50": "电子",
+        "\u89c6\u8baf": "视讯",
+        "\u4f53\u80b2": "体育",
+        "\u5f69\u7968": "彩票",
+        "\u68cb\u724c": "棋牌"
+    }
+
+    投注人数 = 0.0
+
+    for game_type in game_types:
+        value = float(game_group_data.get(game_type, 0))
+        投注人数 += value
+
+    print(投注人数)
+
+
+
+    # 打开工作簿
+    wb = load_workbook('每小时数据.xlsx')
+
+    # 选择要操作的表格
+    ws = wb['Sheet1']
+
+    # 写入数据
+    ws.cell(row=4, column=1, value=0)
+    ws.cell(row=4, column=2, value=在线人数)
+    ws.cell(row=4, column=3, value=注册人数)
+    ws.cell(row=4, column=4, value=总存款人数)
+    ws.cell(row=4, column=5, value=总出款人数)
+    ws.cell(row=4, column=6, value=投注人数)
+    ws.cell(row=4, column=7, value=总存款金额)
+    ws.cell(row=4, column=8, value=总取款)
+    ws.cell(row=4, column=12, value=首存人数)
+    ws.cell(row=4, column=13, value=银行卡充值金额)
+    ws.cell(row=4, column=14, value=第三方充值金额)
+    ws.cell(row=4, column=19, value=银行卡充值人数)
+    ws.cell(row=4, column=15, value=数字货币充值金额)
+    ws.cell(row=4, column=16, value=虚拟币充值)
+    ws.cell(row=4, column=18, value=虚拟货币出款金额)
+    ws.cell(row=4, column=20, value=第三方充值人数)
+    ws.cell(row=4, column=21, value=数字货币充值人数)
+    ws.cell(row=4, column=22, value=total_recharge_count)
+    ws.cell(row=4, column=24, value=虚拟货币出款人数)
+    ws.cell(row=4, column=31, value=总打码)
+    ws.cell(row=4, column=34, value=盈亏金额)
+
+    # 保存工作簿
+    wb.save("每小时数据.xlsx")
+    # 自动打开表格
+    os.startfile('每小时数据.xlsx')
+
+
+if __name__ == '__main__':
+    start()
+
